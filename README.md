@@ -11,7 +11,7 @@ A Go client library for interacting with Dappier's API's.
 To install the package, run:
 
 ```bash
-go get github.com/yourusername/dappier-go
+go get github.com/DappierAI/dappier-go
 
 ```
 
