@@ -11,16 +11,28 @@ import (
 
 const (
 	BaseUrl             = "https://api.dappier.com/app/datamodel"
+	SearchBaseUrl       = "https://api.dappier.com/app/v2/search"
 	RealtimeDataModelId = "dm_01hpsxyfm2fwdt2zet9cg6fdxt"
 	ContentType         = "application/json"
 )
 
-// AiRecommendationsRequest represents the request payload structure for the Dappier AI recommendations API
-type AiRecommendationsRequest struct {
+// SearchRequest represents the request payload structure for the Dappier AI recommendations API
+type SearchRequest struct {
 	Query          string `json:"query"`            // Natural language query or URL
 	SimilarityTopK int    `json:"similarity_top_k"` // The number of articles to return (default is 9)
 	Ref            string `json:"ref"`              // Domain from which to fetch recommendations (e.g., techcrunch.com)
 	NumArticlesRef int    `json:"num_articles_ref"` // Guaranteed number of articles from the specified domain
+}
+
+type SearchResponse struct {
+	Status   string       `json:"status"`
+	Response SearchResult `json:"response"`
+}
+
+type SearchResult struct {
+	Query   string                   `json:"query"`
+	Results []map[string]interface{} `json:"results"` // Dynamic JSON structure
+	Message string                   `json:"message"`
 }
 
 // AiRecommendationsResult represents the response structure for the Dappier AI recommendations API
@@ -152,11 +164,11 @@ func (d *DappierApp) RealtimeSearchAPI(query string) (*RealtimeSearchResult, err
 }
 
 // RecommendationsOption defines a functional option for configuring the AIRecommendations request
-type RecommendationsOption func(*AiRecommendationsRequest)
+type RecommendationsOption func(*SearchRequest)
 
 // WithSimilarityTopK sets the similarity_top_k option. The number of articles to return. Default is 9.
 func WithSimilarityTopK(k int) RecommendationsOption {
-	return func(req *AiRecommendationsRequest) {
+	return func(req *SearchRequest) {
 		req.SimilarityTopK = k
 	}
 }
@@ -164,7 +176,7 @@ func WithSimilarityTopK(k int) RecommendationsOption {
 // WithRef sets the ref option
 // The domain of the site from which the recommendations should come. For example, techcrunch.com.
 func WithRef(ref string) RecommendationsOption {
-	return func(req *AiRecommendationsRequest) {
+	return func(req *SearchRequest) {
 		req.Ref = ref
 	}
 }
@@ -172,7 +184,7 @@ func WithRef(ref string) RecommendationsOption {
 // WithNumArticlesRef sets the num_articles_ref option
 // Specifies how many articles should be guaranteed to match the domain specified in ref.
 func WithNumArticlesRef(num int) RecommendationsOption {
-	return func(req *AiRecommendationsRequest) {
+	return func(req *SearchRequest) {
 		req.NumArticlesRef = num
 	}
 }
@@ -194,7 +206,7 @@ func (d *DappierApp) AIRecommendations(query string, datamodelID string, opts ..
 	}
 
 	// Create the request payload
-	requestData := AiRecommendationsRequest{
+	requestData := SearchRequest{
 		Query:          query,
 		SimilarityTopK: 9,  // default value for similarityTopK
 		Ref:            "", // default value for ref
@@ -258,5 +270,97 @@ func (d *DappierApp) AIRecommendations(query string, datamodelID string, opts ..
 		return nil, errors.New("no results found")
 	}
 
+	return &result, nil
+}
+
+// SearchOption defines a functional option for configuring the Search request
+type SearchOption func(*SearchRequest)
+
+// WithSearchSimilarityTopK sets the similarity_top_k option for the search query
+func WithSearchSimilarityTopK(k int) SearchOption {
+	return func(req *SearchRequest) {
+		req.SimilarityTopK = k
+	}
+}
+
+// WithSearchRef sets the ref option for the search query
+func WithSearchRef(ref string) SearchOption {
+	return func(req *SearchRequest) {
+		req.Ref = ref
+	}
+}
+
+// WithSearchNumArticlesRef sets the num_articles_ref option for the search query
+func WithSearchNumArticlesRef(num int) SearchOption {
+	return func(req *SearchRequest) {
+		req.NumArticlesRef = num
+	}
+}
+
+// Search performs a search on the Dappier API using the provided query and data model ID, with optional parameters
+func (d *DappierApp) Search(query string, dataModelID string, opts ...SearchOption) (*SearchResponse, error) {
+	// Validate inputs
+	if query == "" || dataModelID == "" {
+		return nil, errors.New("query and data_model_id cannot be empty")
+	}
+
+	// Create the default request payload with the provided query
+	requestData := SearchRequest{
+		Query:          query,
+		SimilarityTopK: 9,  // default value
+		Ref:            "", // default value
+		NumArticlesRef: 0,  // default value
+	}
+
+	// Apply all optional parameters to the request data
+	for _, opt := range opts {
+		opt(&requestData)
+	}
+
+	// Marshal the request data into JSON
+	reqBody, err := json.Marshal(requestData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request data: %w", err)
+	}
+
+	// Construct the request URL with the provided data model ID
+	url := fmt.Sprintf("%s?data_model_id=%s", SearchBaseUrl, dataModelID)
+
+	// Create a new HTTP request
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new request: %w", err)
+	}
+
+	// Set necessary headers
+	req.Header.Set("Content-Type", ContentType)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", d.APIKey))
+
+	// Use the client's HTTP client to make the request
+	resp, err := d.Client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error making HTTP request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check for non-OK status code
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("received non-OK response status: %d", resp.StatusCode)
+	}
+
+	// Read the response body using io.ReadAll
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Unmarshal the response body into the SearchResponse structure
+	var result SearchResponse
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	// Return the result
 	return &result, nil
 }
