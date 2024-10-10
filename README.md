@@ -11,7 +11,7 @@ A Go client library for interacting with Dappier's API's.
 To install the package, run:
 
 ```bash
-go get github.com/DappierAI/dappier-go
+go get github.com/dappier/dappier-go
 
 ```
 
@@ -215,6 +215,4 @@ func main() {
 - Options: `"most_recent"` or `"semantic"`.
   - `"semantic"` (default): Contextual matching of the query to retrieve articles.
   - `"most_recent"`: Retrieves articles sorted by the most recent publication date.
-
-
 
